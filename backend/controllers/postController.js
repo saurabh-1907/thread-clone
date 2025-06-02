@@ -1,9 +1,6 @@
 import Post from "../models/postModel.js";
 import User from "../models/userModel.js";
-import Groq from "groq-sdk";
 import { v2 as cloudinary } from "cloudinary";
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const createPost = async (req, res) => {
 	try {
@@ -35,41 +32,6 @@ const createPost = async (req, res) => {
 
 		const newPost = new Post({ postedBy, text, img });
 		await newPost.save();
-
-		// 👇 Check if @threadbot is in the post
-		if (text.toLowerCase().includes("@threadbot")) {
-			const botUser = await User.findOne({ username: "threadBot" });
-			if (botUser) {
-				const prompt = `You are threadBot, a helpful assistant on a social media app. you are created by Saurabh Pandey. A user posted:\n"${text}". Reply back try to be witty as per question and answer if it is a question answer length should be according to question and try to be concise.`;
-
-				const groqReply = await groq.chat.completions.create({
-					model: "qwen-2.5-32b",
-					messages: [{ role: "user", content: prompt }],
-					stream: true,
-					temperature: 0.6,
-					top_p: 0.95,
-					stop: null,
-					max_tokens: 4096,
-				});
-
-				let botText = "";
-				for await (const chunk of groqReply) {
-					botText += chunk.choices[0]?.delta?.content || "";
-				}
-
-				// Save reply from bot to this post
-				newPost.replies.push({
-					userId: botUser._id,
-					text: botText.trim(),
-					userProfilePic: botUser.profilePic,
-					username: botUser.username,
-				});
-
-				await newPost.save(); // Save again with the reply
-			} else {
-				console.log("threadBot user not found");
-			}
-		}
 
 		res.status(201).json(newPost);
 	} catch (err) {
@@ -164,40 +126,6 @@ const replyToPost = async (req, res) => {
 		// Add user's reply to the post
 		const reply = { userId, text, userProfilePic, username };
 		post.replies.push(reply);
-
-		// Check for @threadbot mention
-		if (text.toLowerCase().includes("@threadbot")) {
-			const botUser = await User.findOne({ username: "threadBot" });
-			if (!botUser) {
-				return res.status(500).json({ error: "threadBot user not found in DB" });
-			}
-
-			const prompt = `You are threadBot, a smart, friendly assistant on a social app you are developed by Saurabh Pandey. A user replied:\n"${text}". Craft a short helpful reply as if you're responding in the same thread. Reply back try to be witty as per question and answer if it is a question answer length should be according to question and try to be concise.`;
-
-			const groqReply = await groq.chat.completions.create({
-				model: "qwen-2.5-32b",
-				messages: [{ role: "user", content: prompt }],
-				stream: true,
-				temperature: 0.6,
-				top_p: 0.95,
-				stop: null,
-				max_tokens: 4096,
-			});
-
-			// Collect streamed content
-			let botText = "";
-			for await (const chunk of groqReply) {
-				botText += chunk.choices[0]?.delta?.content || "";
-			}
-
-			// Add threadBot's reply
-			post.replies.push({
-				userId: botUser._id,
-				text: botText.trim(),
-				userProfilePic: botUser.profilePic,
-				username: botUser.username,
-			});
-		}
 
 		await post.save();
 		res.status(200).json({ message: "Replied successfully!" });
