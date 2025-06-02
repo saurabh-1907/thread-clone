@@ -50,7 +50,7 @@ const HomePage = () => {
 			<Box
 				flex={30}
 				display={{
-					base: "none",
+					base: "block",
 					md: "block",
 				}}
 			>
